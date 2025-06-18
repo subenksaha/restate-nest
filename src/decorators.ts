@@ -74,7 +74,7 @@ export function createVirtualObject(instance: any) {
       Object.entries<Function>(handlers).map(([key, originalFn]) => {
         return [
           key,
-          async (ctx: restate.Context, ...args: any[]) => {
+          async (ctx: restate.ObjectContext, ...args: any[]) => {
             return originalFn.call(instance, ctx, ...args);
           }
         ];

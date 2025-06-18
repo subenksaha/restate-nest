@@ -37,7 +37,7 @@ import { RestateModule } from 'restate-nest';
   imports: [
     RestateModule.forRoot({
       url: 'http://localhost:8080', // Your Restate server URL
-      listenerPort: 3001, // Optional: Port for the Restate listener
+      listenerPort: 9080, // Optional: Port for the Restate listener
     }),
   ],
 })
@@ -52,7 +52,7 @@ import { RestateService, RestateHandler } from 'restate-nest';
 @RestateService('greeter')
 export class GreeterService {
   @RestateHandler()
-  async greet(name: string): Promise<string> {
+  async greet(ctx: restate.Context, name: string /** other args**/): Promise<string> {
     return `Hello, ${name}!`;
   }
 }
@@ -83,7 +83,7 @@ export class Counter {
   private count: number = 0;
 
   @RestateHandler()
-  async increment(amount: number = 1): Promise<number> {
+  async increment(ctx: restate.ObjectContext, amount: number = 1): Promise<number> {
     this.count += amount;
     return this.count;
   }
@@ -98,8 +98,14 @@ import { RestateWorkflow, RestateHandler } from 'restate-nest';
 @RestateWorkflow('order-processing')
 export class OrderWorkflow {
   @RestateHandler()
-  async processOrder(orderId: string): Promise<void> {
+  async run(ctx: restate.WorkflowSharedContext<any>, orderId: string): Promise<void> {
     // Your workflow logic here
+    // Every workflow must have a "run" method
+  }
+  @RestateHandler()
+  async getStaus(ctx: restate.WorkflowSharedContext<any>, orderId: string): Promise<void> {
+    // Your workflow logic here
+    // Every workflow must have a "run" method
   }
 }
 ```
@@ -109,7 +115,7 @@ export class OrderWorkflow {
 ### Module Options
 
 - `url`: (Required) The URL of your Restate server
-- `listenerPort`: (Optional) Port for the Restate listener (default: 3001)
+- `listenerPort`: (Optional) Port for the Restate listener (default: 9080)
 
 ## Error Handling
 
