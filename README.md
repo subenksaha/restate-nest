@@ -12,7 +12,7 @@ A seamless integration between [Restate](https://restate.dev/) and [NestJS](http
 ## Installation
 
 ```bash
-npm install restate-nest
+npm install restate-nest @restatedev/restate-sdk @restatedev/restate-sdk-clients
 ```
 ## Peer Dependencies
 
