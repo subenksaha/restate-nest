@@ -2,7 +2,7 @@ import { DynamicModule, Module, Provider } from "@nestjs/common";
 import { createService, createVirtualObject, createWorkflow } from './decorators';
 import * as clients from "@restatedev/restate-sdk-clients"
 import { endpoint } from './endpoint';
-export {RestateService, RestateWorkflow, RestateObject } from './decorators'
+export {RestateService, RestateWorkflow, RestateObject, RestateHandler } from './decorators'
 
 interface RestateModuleOptions {
   services?: Function[];
