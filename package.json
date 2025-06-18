@@ -1,25 +1,35 @@
 {
   "name": "restate-nest",
   "version": "1.0.0",
-  "description": "",
+  "description": "A decorator based easy to use nestjs and restate.dev integration",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsup src/index.ts --format esm,cjs --dts",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:ci": "jest --ci --reporters=default --reporters=jest-junit"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": ["restate", "nest", "nestjs"],
+  "author": "Suben K. Saha",
+  "license": "MIT",
   "type": "commonjs",
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/jest": "^30.0.0",
+    "jest": "^30.0.0",
+    "ts-jest": "^29.4.0",
+    "ts-node": "^10.9.2",
     "tsup": "^8.5.0",
     "typescript": "^5.8.3"
   },
   "peerDependencies": {
-    "@restatedev/restate-sdk-clients": ">=1.6.1",
+    "@nestjs/common": ">=10.4.19",
     "@restatedev/restate-sdk": ">=1.6.1",
-    "@nestjs/common": ">=10.4.19"
+    "@restatedev/restate-sdk-clients": ">=1.6.1"
   }
 }

@@ -2,10 +2,11 @@
 import 'reflect-metadata';
 import * as restate from '@restatedev/restate-sdk';
 
-const SERVICE_METADATA = Symbol("SERVICE_METADATA");
-const HANDLER_METADATA = Symbol("HANDLER_METADATA");
-const OBJECT_METADATA = Symbol("OBJECT_METADATA");
-const WORKFLOW_METADATA = Symbol("WORKFLOW_METADATA");
+// Export symbols for testing purposes
+export const SERVICE_METADATA = Symbol("SERVICE_METADATA");
+export const HANDLER_METADATA = Symbol("HANDLER_METADATA");
+export const OBJECT_METADATA = Symbol("OBJECT_METADATA");
+export const WORKFLOW_METADATA = Symbol("WORKFLOW_METADATA");
 
 
 export function RestateService(name: string) {
