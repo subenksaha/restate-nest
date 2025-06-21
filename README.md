@@ -22,7 +22,7 @@ npm install restate-nest @restatedev/restate-sdk @restatedev/restate-sdk-clients
 ## Prerequisites
 
 - Node.js 16 or later
-- NestJS 10.x
+- NestJS 10.x or later
 - A running Restate instance
 
 ## Quick Start
@@ -80,11 +80,10 @@ For calling other Restate services, you can inject the `restate.Client` into you
 ```typescript
 import {RESTATE_CLIENT} from 'restate-nest';
 import {Inject} from '@nestjs/common';
-import ex = CSS.ex;
 
 @Service()
 export class GreeterService {
-  constructor(@Inject(RESTATE_CLIENT) private readonly restateClient: restate.Client) {}
+  constructor(@Inject(RESTATE_CLIENT) private readonly restateClient: clients.Ingress) {}
 
   async hello(name: string): Promise<string> {
 	  await this.restateClient.serviceClient<{
