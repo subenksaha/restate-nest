@@ -73,6 +73,26 @@ export class GreeterModule {}
 
 ## Advanced Usage
 
+### Using Restate Client
+
+For calling other Restate services, you can inject the `restate.Client` into your service.
+
+```typescript
+import {RESTATE_CLIENT} from 'restate-nest';
+import {Inject} from '@nestjs/common';
+import ex = CSS.ex;
+
+@Service()
+export class GreeterService {
+  constructor(@Inject(RESTATE_CLIENT) private readonly restateClient: restate.Client) {}
+
+  async hello(name: string): Promise<string> {
+	  await this.restateClient.serviceClient<{
+		  greet: (name: string) => Promise<boolean>;
+	  }>({ name: 'greeter' as const }).greet()
+  }
+}
+```
 ### Virtual Objects
 
 ```typescript
@@ -123,7 +143,7 @@ All Restate-related errors will be properly propagated and can be caught using N
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Please feel free to submit a Pull Request. https://github.com/subenksaha/restate-nest
 
 ## License
 
