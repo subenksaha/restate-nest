@@ -1,6 +1,6 @@
 {
   "name": "restate-nest",
-  "version": "1.1.7",
+  "version": "1.1.9",
   "description": "A decorator based easy to use nestjs and restate.dev integration",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

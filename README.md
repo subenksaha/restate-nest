@@ -78,6 +78,7 @@ For calling other Restate services, you can inject the `clients.Ingress` into yo
 ```typescript
 import {RESTATE_CLIENT} from 'restate-nest';
 import {Inject} from '@nestjs/common';
+import * as clients from '@restatedev/restate-sdk-clients';
 
 @Service()
 export class GreeterService {
