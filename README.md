@@ -28,7 +28,6 @@ npm install restate-nest @restatedev/restate-sdk @restatedev/restate-sdk-clients
 ## Quick Start
 
 1. **Import the module** in your `app.module.ts`:
-
 ```typescript
 import { Module } from '@nestjs/common';
 import { RestateModule } from 'restate-nest';
@@ -45,7 +44,6 @@ export class AppModule {}
 ```
 
 2. **Create a Restate Service**:
-
 ```typescript
 import { RestateService, RestateHandler } from 'restate-nest';
 
@@ -75,7 +73,7 @@ export class GreeterModule {}
 
 ### Using Restate Client
 
-For calling other Restate services, you can inject the `restate.Client` into your service.
+For calling other Restate services, you can inject the `clients.Ingress` into your service.
 
 ```typescript
 import {RESTATE_CLIENT} from 'restate-nest';
