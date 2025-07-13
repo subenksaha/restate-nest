@@ -10,6 +10,8 @@ interface RestateModuleOptions {
   services?: Function[];
   objects?: Function[];
   workflows?: Function[];
+  imports?: any[];
+  providers?: Provider[];
 }
 
 export const RESTATE_CLIENT = 'RESTATE_CLIENT';
@@ -106,7 +108,7 @@ export class RestateModule implements OnApplicationBootstrap {
   static async forFeature(options: RestateModuleOptions): Promise<DynamicModule> {
     const providers: Provider[] = [];
     const exports: Provider[] = [];
-    const { services, objects, workflows } = options;
+    const { services, objects, workflows, imports = [], providers: additionalProviders = [] } = options;
     
     if (!!services) {
       // Register service classes as providers and store for later binding
@@ -173,9 +175,15 @@ export class RestateModule implements OnApplicationBootstrap {
       providers.push(...workflowProviders, ...classProviders);
       exports.push(...workflowProviders);
     }
+
+    if (additionalProviders && additionalProviders.length > 0) {
+      providers.push(...additionalProviders);
+      exports.push(...additionalProviders);
+    }
     
     return {
       module: RestateModule,
+      imports: imports,
       providers: providers,
       exports: exports,
     };
