@@ -18,11 +18,13 @@ npm install restate-nest @restatedev/restate-sdk @restatedev/restate-sdk-clients
 
 - `@restatedev/restate-sdk-clients` (>=1.6.1)
 - `@restatedev/restate-sdk` (>=1.6.1)
-- `@nestjs/common` (>=10.4.19)
+- `@nestjs/common` (^10.4.19 || ^11.0.0 || ^12.0.0)
+- `reflect-metadata` (^0.1.12 || ^0.2.0)
 ## Prerequisites
 
-- Node.js 16 or later
-- NestJS 10.x or later
+- Node.js 16 or later (NestJS 12 requires Node.js 20 or later)
+- NestJS 10.x, 11.x or 12.x
+- Works with both CommonJS and ESM projects (NestJS 12 is ESM-only)
 - A running Restate instance
 
 ## Quick Start
@@ -134,6 +136,33 @@ export class OrderWorkflow {
 
 - `url`: (Required) The URL of your Restate server
 - `listenerPort`: (Optional) Port for the Restate listener (default: 9080)
+- `consoleUrl`: (Optional) Restate admin API URL, e.g. `http://localhost:9070`. When set, the app registers itself as a deployment on startup; otherwise nothing is registered
+- `moduleHost`: (Optional) Host Restate uses to reach this app (default: `MODULE_HOST` env var, then `localhost`)
+- `moduleProtocol`: (Optional) Protocol Restate uses to reach this app (default: `MODULE_PROTOCOL` env var, then `http`)
+- `logger`: (Optional) A NestJS `LoggerService` for Restate logs (default: NestJS `Logger`). Pass `false` to keep the Restate SDK's console logger
+- `loggerContext`: (Optional) Context name attached to Restate log entries (default: `"Restate"`)
+
+### Logging
+
+Restate SDK logs, including `ctx.console` output from your handlers, go through the NestJS logger by default:
+
+| Restate level | NestJS method |
+|---------------|---------------|
+| `error`       | `error()`     |
+| `warn`        | `warn()`      |
+| `info`        | `log()`       |
+| `debug`       | `debug()`     |
+| `trace`       | `verbose()`   |
+
+Logs emitted while an invocation is replaying are skipped. As with the SDK's default logger, levels below `RESTATE_LOGGING` (default `info`) are dropped, and NestJS's own `logLevels` filtering applies on top of that.
+
+```typescript
+RestateModule.forRoot({
+  url: 'http://localhost:8080',
+  logger: new MyCustomLogger(), // any LoggerService, or `false` to disable
+  loggerContext: 'Workflows',
+});
+```
 
 ## Error Handling
 

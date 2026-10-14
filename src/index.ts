@@ -1,10 +1,11 @@
-import { DynamicModule, Module, Provider, OnApplicationBootstrap, Logger } from "@nestjs/common";
+import { DynamicModule, LoggerService, Module, Provider, OnApplicationBootstrap, Logger, Inject } from "@nestjs/common";
 import { ModuleRef } from '@nestjs/core';
 import { createService, createVirtualObject, createWorkflow } from './decorators';
 import * as clients from "@restatedev/restate-sdk-clients"
 import { endpoint } from './endpoint';
+import { createNestLoggerTransport } from './logger';
 export {RestateService, RestateWorkflow, RestateObject, RestateHandler } from './decorators'
-import { ConfigService } from '@nestjs/config';
+export { createNestLoggerTransport, DEFAULT_LOGGER_CONTEXT } from './logger';
 
 interface RestateModuleOptions {
   services?: Function[];
@@ -14,10 +15,30 @@ interface RestateModuleOptions {
   providers?: Provider[];
 }
 
+export interface RestateRootOptions {
+  url: string;
+  /** URL of the Restate admin API (e.g. "http://localhost:9070"). When set, this app registers itself as a deployment on startup. */
+  consoleUrl?: string;
+  listenerPort?: number;
+  /** Host Restate uses to reach this app. Defaults to the MODULE_HOST env var, then "localhost". */
+  moduleHost?: string;
+  /** Protocol Restate uses to reach this app. Defaults to the MODULE_PROTOCOL env var, then "http". */
+  moduleProtocol?: string;
+  /**
+   * Logger used for Restate SDK logs. Defaults to the NestJS `Logger`.
+   * Pass a custom `LoggerService` to use your own, or `false` to keep the SDK's console logger.
+   */
+  logger?: LoggerService | false;
+  /** Context name attached to Restate log entries. Defaults to "Restate". */
+  loggerContext?: string;
+}
+
 export const RESTATE_CLIENT = 'RESTATE_CLIENT';
 
 let restateStarted = false;
 let restateConsoleUrl = '';
+let restateModuleHost: string | undefined;
+let restateModuleProtocol: string | undefined;
 @Module({})
 export class RestateModule implements OnApplicationBootstrap {
   private readonly logger = new Logger(RestateModule.name);
@@ -27,35 +48,34 @@ export class RestateModule implements OnApplicationBootstrap {
   private static listenerPort: number;
   private static deploymentRegistered = false;
 
-  constructor(private readonly moduleRef: ModuleRef, private readonly configService: ConfigService) {}
+  constructor(@Inject(ModuleRef) private readonly moduleRef: ModuleRef) {}
 
   async onApplicationBootstrap() {
     this.logger.debug('=== RestateModule.onApplicationBootstrap() STARTED ===');
 
-    const moduleProtocol = this.configService.get('MODULE_PROTOCOL') || 'http';
-    const moduleHost = this.configService.get('MODULE_HOST') || 'localhost';
+    const moduleProtocol = restateModuleProtocol || process.env.MODULE_PROTOCOL || 'http';
+    const moduleHost = restateModuleHost || process.env.MODULE_HOST || 'localhost';
     const moduleRestateUrl = `${moduleProtocol}://${moduleHost}:${RestateModule.listenerPort}`;
 
-    const processQueue = async (items: Function[], createHandler: (instance: any) => any, type: string) => {
+    const processQueue = async (items: Function[], tokenSuffix: string, type: string) => {
         for (const ItemClass of items) {
-            const instance = this.moduleRef.get(ItemClass, { strict: false });
-            if (instance) {
-                const handler = createHandler(instance);
-                endpoint.bind(handler);
+            const definition = this.moduleRef.get(`${ItemClass.name}${tokenSuffix}`, { strict: false });
+            if (definition) {
+                endpoint.bind(definition);
                 this.logger.debug(`Bound Restate ${type}: ${ItemClass.name}`);
             } else {
-                this.logger.warn(`Failed to get instance for ${type}: ${ItemClass.name}`);
+                this.logger.warn(`Failed to get definition for ${type}: ${ItemClass.name}`);
             }
         }
     };
 
-    await processQueue(RestateModule.pendingServices, createService, 'service');
-    await processQueue(RestateModule.pendingObjects, createVirtualObject, 'virtual object');
-    await processQueue(RestateModule.pendingWorkflows, createWorkflow, 'workflow');
+    await processQueue(RestateModule.pendingServices, '_RestateService', 'service');
+    await processQueue(RestateModule.pendingObjects, '_RestateVirtualObject', 'virtual object');
+    await processQueue(RestateModule.pendingWorkflows, '_RestateWorkflow', 'workflow');
 
-    // Register deployment only if there are services/objects/workflows and it hasn't been done yet
+    // Register deployment only when a consoleUrl was given, there are handlers, and it hasn't been done yet
     const hasHandlers = RestateModule.pendingServices.length > 0 || RestateModule.pendingObjects.length > 0 || RestateModule.pendingWorkflows.length > 0;
-    if (hasHandlers && !RestateModule.deploymentRegistered) {
+    if (restateConsoleUrl && hasHandlers && !RestateModule.deploymentRegistered) {
         try {
             const result = await fetch(`${restateConsoleUrl}/deployments`, {
                 method: 'POST',
@@ -85,16 +105,21 @@ export class RestateModule implements OnApplicationBootstrap {
     this.logger.debug('=== RestateModule.onApplicationBootstrap() COMPLETED ===');
   }
 
-  static async forRoot(options: { url: string, consoleUrl: string, listenerPort?: number }): Promise<DynamicModule> {
+  static async forRoot(options: RestateRootOptions): Promise<DynamicModule> {
     const clientProvider: Provider = {
       provide: RESTATE_CLIENT,
       useValue: clients.connect({ url: options.url }),
     };
-    
+
     if (!restateStarted) {
       restateStarted = true;
-      restateConsoleUrl = options.consoleUrl || 'http://localhost:9070';
+      restateConsoleUrl = options.consoleUrl || '';
+      restateModuleHost = options.moduleHost;
+      restateModuleProtocol = options.moduleProtocol;
       RestateModule.listenerPort = options.listenerPort || 9080;
+      if (options.logger !== false) {
+        endpoint.setLogger(createNestLoggerTransport(options.logger || undefined, options.loggerContext));
+      }
       await endpoint.listen(RestateModule.listenerPort);
     }
     return Promise.resolve({
@@ -118,7 +143,8 @@ export class RestateModule implements OnApplicationBootstrap {
         
         return {
           provide: serviceToken,
-          useFactory: () => null, // Placeholder - actual binding happens in lifecycle hook
+          useFactory: (instance: any) => createService(instance), // Bound to the endpoint in the lifecycle hook
+          inject: [ServiceClass],
         } as Provider;
       });
       
@@ -140,7 +166,8 @@ export class RestateModule implements OnApplicationBootstrap {
         
         return {
           provide: objectToken,
-          useFactory: () => null, // Placeholder - actual binding happens in lifecycle hook
+          useFactory: (instance: any) => createVirtualObject(instance), // Bound to the endpoint in the lifecycle hook
+          inject: [ObjectClass],
         };
       });
       
@@ -162,7 +189,8 @@ export class RestateModule implements OnApplicationBootstrap {
         
         return {
           provide: workflowToken,
-          useFactory: () => null, // Placeholder - actual binding happens in lifecycle hook
+          useFactory: (instance: any) => createWorkflow(instance), // Bound to the endpoint in the lifecycle hook
+          inject: [WorkflowClass],
         };
       });
       

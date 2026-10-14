@@ -5,6 +5,19 @@
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "./package.json": "./package.json"
+  },
   "scripts": {
     "build": "tsup src/index.ts --format esm,cjs --dts",
     "test": "jest",
@@ -12,24 +25,40 @@
     "test:coverage": "jest --coverage",
     "test:ci": "jest --ci --reporters=default --reporters=jest-junit"
   },
-  "keywords": ["restate", "nest", "nestjs", "concurrency", "workflows", "services", "objects"],
+  "keywords": [
+    "restate",
+    "nest",
+    "nestjs",
+    "concurrency",
+    "workflows",
+    "services",
+    "objects"
+  ],
   "author": "Suben K. Saha",
   "license": "MIT",
   "type": "commonjs",
   "devDependencies": {
+    "@nestjs/common": "^12.1.3",
+    "@nestjs/core": "^12.1.3",
+    "@restatedev/restate-sdk": "^1.17.3",
+    "@restatedev/restate-sdk-clients": "^1.17.3",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
     "@types/jest": "^30.0.0",
     "jest": "^30.0.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
     "ts-jest": "^29.4.0",
     "ts-node": "^10.9.2",
     "tsup": "^8.5.0",
     "typescript": "^5.8.3"
   },
   "peerDependencies": {
-    "@nestjs/common": ">=10.4.19",
+    "@nestjs/common": "^10.4.19 || ^11.0.0 || ^12.0.0",
+    "@nestjs/core": "^10.4.19 || ^11.0.0 || ^12.0.0",
     "@restatedev/restate-sdk": ">=1.6.1",
-    "@restatedev/restate-sdk-clients": ">=1.6.1"
+    "@restatedev/restate-sdk-clients": ">=1.6.1",
+    "reflect-metadata": "^0.1.12 || ^0.2.0"
   }
 }
