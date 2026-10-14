@@ -4,3 +4,6 @@ tsconfig.json
 node_modules/
 .idea/
 coverage/
+jest.config.js
+.github/
+__tests__/

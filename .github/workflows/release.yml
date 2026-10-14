@@ -1,0 +1,54 @@
+name: Release to npm
+
+# Publishes the package when a GitHub release is published.
+# The release tag must match package.json, e.g. tag v2.0.0 for version 2.0.0.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write # npm trusted publishing and provenance
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - name: Check tag matches package.json version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          VERSION="$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$VERSION" ]; then
+            echo "::error::Release tag $GITHUB_REF_NAME does not match package.json version $VERSION"
+            exit 1
+          fi
+
+      - run: npm ci
+
+      - run: npm test
+
+      - run: npm run build
+
+      - name: Publish
+        run: |
+          # Pre-releases (e.g. 2.1.0-beta.1) go to the "next" dist-tag instead of "latest"
+          if [ "${{ github.event.release.prerelease }}" = "true" ]; then
+            npm publish --provenance --access public --tag next
+          else
+            npm publish --provenance --access public
+          fi
+        env:
+          # Only needed without npm trusted publishing; leave the secret unset to use OIDC
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

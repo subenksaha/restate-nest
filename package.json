@@ -23,7 +23,16 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "test:ci": "jest --ci --reporters=default --reporters=jest-junit"
+    "test:ci": "jest --ci --reporters=default --reporters=jest-junit",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/subenksaha/restate-nest.git"
+  },
+  "homepage": "https://github.com/subenksaha/restate-nest#readme",
+  "bugs": {
+    "url": "https://github.com/subenksaha/restate-nest/issues"
   },
   "keywords": [
     "restate",
