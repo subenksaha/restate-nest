@@ -1,6 +1,6 @@
 name: Release to npm
 
-# Publishes the package when a GitHub release is published.
+# Stages the package on npm when a GitHub release is published; a maintainer then approves it with 2FA.
 # The release tag must match package.json, e.g. tag v2.0.0 for version 2.0.0.
 on:
   release:
@@ -41,14 +41,28 @@ jobs:
 
       - run: npm run build
 
-      - name: Publish
+      # Staged publishing needs npm 11.15+, newer than the npm bundled with Node 24
+      - name: Update npm
+        run: npm install -g npm@11 && npm --version
+
+      # Uploads the version to npm's staging queue. It goes live only after a maintainer
+      # approves it with 2FA on npmjs.com (Staged Packages tab) or via `npm stage approve <stage-id>`.
+      - name: Stage for publishing
         run: |
-          # Pre-releases (e.g. 2.1.0-beta.1) go to the "next" dist-tag instead of "latest"
+          # Pre-releases (e.g. 2.1.0-beta.1) go to the "next" dist-tag instead of "latest".
+          # The dist-tag is fixed when staging and cannot be changed on approval.
           if [ "${{ github.event.release.prerelease }}" = "true" ]; then
-            npm publish --provenance --access public --tag next
+            TAG=next
           else
-            npm publish --provenance --access public
+            TAG=latest
           fi
+          npm stage publish --provenance --access public --tag "$TAG"
+          {
+            echo "### restate-nest@${GITHUB_REF_NAME#v} staged with tag \`$TAG\`"
+            echo
+            echo "Approve it on https://www.npmjs.com/package/restate-nest (Staged Packages tab),"
+            echo "or run \`npm stage list restate-nest\` and \`npm stage approve <stage-id>\`."
+          } >> "$GITHUB_STEP_SUMMARY"
         env:
           # Only needed without npm trusted publishing; leave the secret unset to use OIDC
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
