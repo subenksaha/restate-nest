@@ -9,6 +9,16 @@ export const OBJECT_METADATA = Symbol("OBJECT_METADATA");
 export const WORKFLOW_METADATA = Symbol("WORKFLOW_METADATA");
 
 
+export type RestateKind = 'service' | 'object' | 'workflow';
+
+// Which Restate decorator a class carries, if any
+export function getRestateKind(target: Function): RestateKind | undefined {
+  if (Reflect.hasMetadata(WORKFLOW_METADATA, target)) return 'workflow';
+  if (Reflect.hasMetadata(OBJECT_METADATA, target)) return 'object';
+  if (Reflect.hasMetadata(SERVICE_METADATA, target)) return 'service';
+  return undefined;
+}
+
 export function RestateService(name: string) {
   return function (constructor: Function) {
     Reflect.defineMetadata(SERVICE_METADATA, { name }, constructor);
@@ -90,20 +100,22 @@ export function createWorkflow(instance: any): restate.WorkflowDefinition<any, a
   if (!workflow || !handlers) {
     throw new Error(`RestateWorkflow ${constructor.name} is missing @RestateWorkflow or @RestateHandler metadata.`);
   }
-  const rawHandlers: Record<string, any> = {};
-  
-  for (const prop of Object.getOwnPropertyNames(Object.getPrototypeOf(instance))) {
-    if (prop === "constructor") continue;
-    rawHandlers[prop] = instance[prop].bind(instance);
-  }
-  
+
+  // Only methods annotated with @RestateHandler become Restate handlers
+  const rawHandlers: Record<string, any> = Object.fromEntries(
+    Object.entries<Function>(handlers).map(([key, originalFn]) => [
+      key,
+      async (ctx: restate.WorkflowSharedContext<any>, ...args: any[]) => originalFn.call(instance, ctx, ...args),
+    ])
+  );
+
   // Ensure `run` is present
   if (typeof rawHandlers["run"] !== "function") {
-    throw new Error(`RestateWorkflow ${instance.constructor.name} must implement a "run" method.`);
+    throw new Error(`RestateWorkflow ${constructor.name} must implement a "run" method annotated with @RestateHandler (Restate requires every workflow to have one), e.g. \`@RestateHandler() async run(ctx: WorkflowContext, input) {...}\`.`);
   }
-  
+
   return restate.workflow({
-    name: instance.constructor.name,
+    name: workflow.name || constructor.name,
     handlers: rawHandlers as {
       run: (ctx: restate.WorkflowSharedContext<any>, ...args: any[]) => Promise<any>,
       [key: string]: (ctx: restate.WorkflowSharedContext<any>, ...args: any[]) => Promise<any>,

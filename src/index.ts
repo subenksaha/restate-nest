@@ -1,6 +1,6 @@
-import { DynamicModule, LoggerService, Module, Provider, OnApplicationBootstrap, Logger, Inject } from "@nestjs/common";
+import { DynamicModule, LoggerService, Module, Provider, OnApplicationBootstrap, Logger, Inject, InjectionToken, OptionalFactoryDependency, Type } from "@nestjs/common";
 import { ModuleRef } from '@nestjs/core';
-import { createService, createVirtualObject, createWorkflow } from './decorators';
+import { createService, createVirtualObject, createWorkflow, getRestateKind, RestateKind } from './decorators';
 import * as clients from "@restatedev/restate-sdk-clients"
 import { endpoint } from './endpoint';
 import { createNestLoggerTransport } from './logger';
@@ -33,7 +33,21 @@ export interface RestateRootOptions {
   loggerContext?: string;
 }
 
+export interface RestateOptionsFactory {
+  createRestateOptions(): Promise<RestateRootOptions> | RestateRootOptions;
+}
+
+export interface RestateRootAsyncOptions {
+  /** Modules exporting the providers needed by `useFactory`, `useClass` or `useExisting`. */
+  imports?: any[];
+  useFactory?: (...args: any[]) => Promise<RestateRootOptions> | RestateRootOptions;
+  inject?: (InjectionToken | OptionalFactoryDependency)[];
+  useClass?: Type<RestateOptionsFactory>;
+  useExisting?: InjectionToken;
+}
+
 export const RESTATE_CLIENT = 'RESTATE_CLIENT';
+export const RESTATE_MODULE_OPTIONS = 'RESTATE_MODULE_OPTIONS';
 
 let restateStarted = false;
 let restateConsoleUrl = '';
@@ -46,6 +60,7 @@ export class RestateModule implements OnApplicationBootstrap {
   private static pendingObjects: Function[] = [];
   private static pendingWorkflows: Function[] = [];
   private static listenerPort: number;
+  private static listening = false;
   private static deploymentRegistered = false;
 
   constructor(@Inject(ModuleRef) private readonly moduleRef: ModuleRef) {}
@@ -57,11 +72,13 @@ export class RestateModule implements OnApplicationBootstrap {
     const moduleHost = restateModuleHost || process.env.MODULE_HOST || 'localhost';
     const moduleRestateUrl = `${moduleProtocol}://${moduleHost}:${RestateModule.listenerPort}`;
 
+    const bound: string[] = [];
     const processQueue = async (items: Function[], tokenSuffix: string, type: string) => {
         for (const ItemClass of items) {
             const definition = this.moduleRef.get(`${ItemClass.name}${tokenSuffix}`, { strict: false });
             if (definition) {
                 endpoint.bind(definition);
+                bound.push(`${definition.name} (${type})`);
                 this.logger.debug(`Bound Restate ${type}: ${ItemClass.name}`);
             } else {
                 this.logger.warn(`Failed to get definition for ${type}: ${ItemClass.name}`);
@@ -72,6 +89,18 @@ export class RestateModule implements OnApplicationBootstrap {
     await processQueue(RestateModule.pendingServices, '_RestateService', 'service');
     await processQueue(RestateModule.pendingObjects, '_RestateVirtualObject', 'virtual object');
     await processQueue(RestateModule.pendingWorkflows, '_RestateWorkflow', 'workflow');
+
+    // endpoint.listen() snapshots the bound services, so it must run after binding
+    if (RestateModule.listenerPort && !RestateModule.listening) {
+        RestateModule.listening = true;
+        await endpoint.listen(RestateModule.listenerPort);
+        if (bound.length > 0) {
+            this.logger.log(`Registered Restate services: ${bound.join(', ')}`);
+            if (!restateConsoleUrl) {
+                this.logger.log(`Register this endpoint with Restate to make it callable, e.g. \`restate deployments register ${moduleRestateUrl}\`, or set \`consoleUrl\` in RestateModule.forRoot()`);
+            }
+        }
+    }
 
     // Register deployment only when a consoleUrl was given, there are handlers, and it hasn't been done yet
     const hasHandlers = RestateModule.pendingServices.length > 0 || RestateModule.pendingObjects.length > 0 || RestateModule.pendingWorkflows.length > 0;
@@ -105,23 +134,26 @@ export class RestateModule implements OnApplicationBootstrap {
     this.logger.debug('=== RestateModule.onApplicationBootstrap() COMPLETED ===');
   }
 
+  // Applies root options once; the endpoint itself starts listening in onApplicationBootstrap
+  private static configure(options: RestateRootOptions): void {
+    if (restateStarted) return;
+    restateStarted = true;
+    restateConsoleUrl = options.consoleUrl || '';
+    restateModuleHost = options.moduleHost;
+    restateModuleProtocol = options.moduleProtocol;
+    RestateModule.listenerPort = options.listenerPort || 9080;
+    if (options.logger !== false) {
+      endpoint.setLogger(createNestLoggerTransport(options.logger || undefined, options.loggerContext));
+    }
+  }
+
   static async forRoot(options: RestateRootOptions): Promise<DynamicModule> {
     const clientProvider: Provider = {
       provide: RESTATE_CLIENT,
       useValue: clients.connect({ url: options.url }),
     };
 
-    if (!restateStarted) {
-      restateStarted = true;
-      restateConsoleUrl = options.consoleUrl || '';
-      restateModuleHost = options.moduleHost;
-      restateModuleProtocol = options.moduleProtocol;
-      RestateModule.listenerPort = options.listenerPort || 9080;
-      if (options.logger !== false) {
-        endpoint.setLogger(createNestLoggerTransport(options.logger || undefined, options.loggerContext));
-      }
-      await endpoint.listen(RestateModule.listenerPort);
-    }
+    RestateModule.configure(options);
     return Promise.resolve({
       module: RestateModule,
       providers: [clientProvider],
@@ -130,10 +162,81 @@ export class RestateModule implements OnApplicationBootstrap {
     });
   }
 
+  /**
+   * Like `forRoot`, but resolves the options through dependency injection,
+   * e.g. from `ConfigService`: `forRootAsync({ imports: [ConfigModule], inject: [ConfigService], useFactory: (config) => ({ url: config.get('RESTATE_URL') }) })`.
+   */
+  static forRootAsync(options: RestateRootAsyncOptions): DynamicModule {
+    const optionsProvider = RestateModule.createAsyncOptionsProvider(options);
+    const clientProvider: Provider = {
+      provide: RESTATE_CLIENT,
+      useFactory: (rootOptions: RestateRootOptions) => clients.connect({ url: rootOptions.url }),
+      inject: [RESTATE_MODULE_OPTIONS],
+    };
+
+    const providers: Provider[] = [optionsProvider, clientProvider];
+    if (options.useClass) {
+      providers.push({ provide: options.useClass, useClass: options.useClass });
+    }
+
+    return {
+      module: RestateModule,
+      imports: options.imports || [],
+      providers,
+      exports: [clientProvider, RESTATE_MODULE_OPTIONS],
+      global: true,
+    };
+  }
+
+  private static createAsyncOptionsProvider(options: RestateRootAsyncOptions): Provider {
+    const resolve = async (factory: () => Promise<RestateRootOptions> | RestateRootOptions) => {
+      const rootOptions = await factory();
+      RestateModule.configure(rootOptions);
+      return rootOptions;
+    };
+
+    if (options.useFactory) {
+      const useFactory = options.useFactory;
+      return {
+        provide: RESTATE_MODULE_OPTIONS,
+        useFactory: (...args: any[]) => resolve(() => useFactory(...args)),
+        inject: options.inject || [],
+      };
+    }
+
+    const factoryToken = options.useClass || options.useExisting;
+    if (!factoryToken) {
+      throw new Error('RestateModule.forRootAsync() requires one of useFactory, useClass or useExisting.');
+    }
+    return {
+      provide: RESTATE_MODULE_OPTIONS,
+      useFactory: (factory: RestateOptionsFactory) => resolve(() => factory.createRestateOptions()),
+      inject: [factoryToken],
+    };
+  }
+
   static async forFeature(options: RestateModuleOptions): Promise<DynamicModule> {
     const providers: Provider[] = [];
     const exports: Provider[] = [];
-    const { services, objects, workflows, imports = [], providers: additionalProviders = [] } = options;
+    const { imports = [], providers: additionalProviders = [] } = options;
+
+    // Route each class by its decorator, so e.g. a @RestateWorkflow listed under `services` is still a workflow
+    const routed: Record<RestateKind, Function[]> = { service: [], object: [], workflow: [] };
+    const listed: [RestateKind, Function[] | undefined][] = [
+      ['service', options.services], ['object', options.objects], ['workflow', options.workflows],
+    ];
+    for (const [listedAs, classes] of listed) {
+      for (const cls of classes ?? []) {
+        const kind = getRestateKind(cls) ?? listedAs;
+        if (kind !== listedAs) {
+          new Logger(RestateModule.name).warn(`${cls.name} is decorated as a Restate ${kind} but was listed as a ${listedAs}; registering it as a ${kind}`);
+        }
+        routed[kind].push(cls);
+      }
+    }
+    const services = routed.service.length ? routed.service : undefined;
+    const objects = routed.object.length ? routed.object : undefined;
+    const workflows = routed.workflow.length ? routed.workflow : undefined;
     
     if (!!services) {
       // Register service classes as providers and store for later binding

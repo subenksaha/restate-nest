@@ -11,7 +11,8 @@ import {
   RestateWorkflow,
   createService,
   createVirtualObject,
-  createWorkflow
+  createWorkflow,
+  getRestateKind
 } from '../src/decorators';
 
 // Store instance for the mock handler
@@ -283,6 +284,48 @@ describe('Restate Decorators', () => {
       });
     });
 
+    it('should use the decorator name and expose only @RestateHandler methods', async () => {
+      @RestateWorkflow('order-processing')
+      class OrderWorkflow {
+        prefix = 'order';
+
+        @RestateHandler()
+        async run(ctx: any, id: string) {
+          return this.format(id);
+        }
+
+        @RestateHandler()
+        async getStatus() {
+          return 'running';
+        }
+
+        format(id: string) {
+          return `${this.prefix}-${id}`;
+        }
+      }
+
+      mockService.mockClear();
+      const workflow: any = createWorkflow(new OrderWorkflow());
+
+      expect(workflow.name).toBe('order-processing');
+      const { handlers } = mockService.mock.calls[0][0];
+      expect(Object.keys(handlers).sort()).toEqual(['getStatus', 'run']);
+      // Handlers run against the instance, so `this` works
+      await expect(handlers.run({}, '42')).resolves.toBe('order-42');
+    });
+
+    it('should throw when run exists but is not annotated with @RestateHandler', () => {
+      @RestateWorkflow('wf')
+      class UnannotatedRun {
+        async run() {}
+
+        @RestateHandler()
+        async other() {}
+      }
+
+      expect(() => createWorkflow(new UnannotatedRun())).toThrow('must implement a "run" method annotated with @RestateHandler');
+    });
+
     it('should throw an error when run method is missing', () => {
       class InvalidWorkflow {
         // No run method
@@ -300,7 +343,7 @@ describe('Restate Decorators', () => {
       const instance = new InvalidWorkflow();
       
       expect(() => createWorkflow(instance)).toThrow(
-        'RestateWorkflow InvalidWorkflow must implement a "run" method.'
+        'RestateWorkflow InvalidWorkflow must implement a "run" method'
       );
     });
 
@@ -316,6 +359,20 @@ describe('Restate Decorators', () => {
       expect(() => createWorkflow(instance)).toThrow(
         'RestateWorkflow InvalidWorkflow is missing @RestateWorkflow or @RestateHandler metadata.'
       );
+    });
+  });
+
+  describe('getRestateKind', () => {
+    it('should detect the decorator a class carries', () => {
+      @RestateService('svc') class Svc {}
+      @RestateObject() class Obj {}
+      @RestateWorkflow('wf') class Wf {}
+      class Plain {}
+
+      expect(getRestateKind(Svc)).toBe('service');
+      expect(getRestateKind(Obj)).toBe('object');
+      expect(getRestateKind(Wf)).toBe('workflow');
+      expect(getRestateKind(Plain)).toBeUndefined();
     });
   });
 });
